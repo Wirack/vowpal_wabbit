@@ -305,10 +305,10 @@ float finalize_prediction(shared_data* sd, float ret)
     cerr << "NAN prediction in example " << sd->example_number + 1 << ", forcing " << ret << endl;
     return ret;
   }
-  if ( ret > sd->max_label )
-    return (float)sd->max_label;
-  if (ret < sd->min_label)
-    return (float)sd->min_label;
+  //if ( ret > sd->max_label )
+  //  return (float)sd->max_label;
+  //if (ret < sd->min_label)
+  //  return (float)sd->min_label;
   return ret;
 }
 
