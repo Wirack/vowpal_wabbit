@@ -153,7 +153,7 @@ void finish_example(vw& all, audit_regressor_data& dd, example& ec)
 { bool printed = false;
   if (ec.example_counter+1 >= all.sd->dump_interval && !all.quiet)
   { print_ex(all, ec.example_counter+1, dd.values_audited, dd.values_audited*100/dd.loaded_regressor_values);
-    all.sd->weighted_examples = (double)(ec.example_counter+1); //used in update_dump_interval
+    all.sd->weighted_unlabeled_examples = (double)(ec.example_counter+1); //used in update_dump_interval
     all.sd->update_dump_interval(all.progress_add, all.progress_arg);
     printed = true;
   }
@@ -177,8 +177,7 @@ void finish(audit_regressor_data& dat)
 template<class T>
 void regressor_values(audit_regressor_data& dat, T& w)
 {  for (typename T::iterator iter = w.begin(); iter != w.end(); ++iter)
-		for (weight_iterator_iterator it = iter.begin(); it != iter.end(); ++it)
-			if (*it != 0) dat.loaded_regressor_values++;
+		if (*iter != 0) dat.loaded_regressor_values++;
 }
 
 void init_driver(audit_regressor_data& dat)

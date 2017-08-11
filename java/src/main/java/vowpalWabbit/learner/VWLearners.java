@@ -1,8 +1,5 @@
 package vowpalWabbit.learner;
 
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
-
 /**
  * This is the only entrance point to create a VWLearner.  It is the responsibility of the user to supply the type they want
  * given the VW command.  If that type is incorrect a {@link java.lang.ClassCastException} is thrown.  Refer to
@@ -10,11 +7,12 @@ import java.util.concurrent.locks.ReentrantLock;
  * @author jmorra
  */
 final public class VWLearners {
-    private volatile static boolean loadedNativeLibrary = false;
-    private static final Lock STATIC_LOCK = new ReentrantLock();
-
     private enum VWReturnType {
         Unknown, ActionProbs, ActionScores, Multiclass, Multilabels, Prob, Scalar, Scalars
+    }
+
+    static {
+        System.loadLibrary("vw_jni");
     }
 
     private VWLearners() {}
@@ -36,35 +34,9 @@ final public class VWLearners {
      * @param <T> The type of learner expected.  Note that this type implicitly specifies the output type of the learner.
      * @return A VW Learner
      */
-    public static <T extends VWLearner> T create(final String command) {
-        long nativePointer = initializeVWJni(command);
-        T learner = getLearner(nativePointer);
-        if(learner == null) {
-            throw new IllegalArgumentException("Unknown VW return type using command: " + command);
-        }
-        
-        return learner;
-    }
-    
-    /**
-     * This method internally uses seed_vw_model C++ method which reuses the shared variables from the
-     * seed model. And hence the memory footprint doesn't grow linearly as it would if one creates
-     * multiple instances using the create method.
-     * @param seedLearner
-     * @return A VW Learner
-     */
-    public static <T extends VWLearner> T clone(final T seedLearner) {
-        long nativePointer = seedVWModel(seedLearner.getNativePointer());
-        T learner = getLearner(nativePointer);
-        if(learner == null) {
-            throw new IllegalArgumentException("Unknown VW return type.");
-        }
-        
-        return learner;
-    }
-    
     @SuppressWarnings("unchecked")
-    private static <T extends VWLearner> T getLearner(long nativePointer) {
+    public static <T extends VWLearner> T create(final String command) {
+        long nativePointer = initialize(command);
         VWReturnType returnType = getReturnType(nativePointer);
 
         switch (returnType) {
@@ -79,48 +51,18 @@ final public class VWLearners {
             default:
                 // Doing this will allow for all cases when a C object is made to be closed.
                 closeInstance(nativePointer);
-                return null;
+                throw new IllegalArgumentException("Unknown VW return type using command: " + command);
         }
     }
 
-    /**
-     * @param command The same string that is passed to VW, see
-     *                <a href="https://github.com/JohnLangford/vowpal_wabbit/wiki/Command-line-arguments">here</a>
-     *                for more information
-     * @return The pointer to the native object created on the C side
-     */
-    private static long initializeVWJni(final String command) {
-        long nativePointer;
-        try {
-            nativePointer = initialize(command);
-            loadedNativeLibrary = true;
-        }
-        catch (UnsatisfiedLinkError e) {
-            loadNativeLibrary();
-            nativePointer = initialize(command);
-        }
-        return nativePointer;
-    }
-    
-    private static void loadNativeLibrary() {
-        // By making use of a static lock here we make sure this code is only executed once globally.
-        if (!loadedNativeLibrary) {
-            STATIC_LOCK.lock();
-            try {
-                if (!loadedNativeLibrary) {
-                    System.loadLibrary("vw_jni");
-                    loadedNativeLibrary = true;
-                }
-            }
-            finally {
-                STATIC_LOCK.unlock();
-            }
-        }
-    }
     private static native long initialize(String command);
-    private static native long seedVWModel(long nativePointer);
     private static native VWReturnType getReturnType(long nativePointer);
 
     // Closing needs to be done here when initialization fails and by VWBase
     static native void closeInstance(long nativePointer);
+
+    // Closing needs to be done here when initialization fails and by VWBase
+    static native void performRemainingPasses(long nativePointer);
+
+    static native void saveModel(long nativePointer, String filename);
 }

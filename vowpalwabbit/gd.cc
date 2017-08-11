@@ -27,6 +27,7 @@ license as described in the file LICENSE.
 #include "floatbits.h"
 
 #define VERSION_SAVE_RESUME_FIX "7.10.1"
+#define VERSION_PASS_UINT64 "8.3.3"
 
 using namespace std;
 using namespace LEARNER;
@@ -764,9 +765,9 @@ void save_load_online_state(vw& all, io_buf& model_file, bool read, bool text, g
 	bin_text_read_write_fixed(model_file, (char*)&all.sd->max_label, sizeof(all.sd->max_label),
 		"", read, msg, text);
 
-	msg << "weighted_examples " << all.sd->weighted_examples << "\n";
-	bin_text_read_write_fixed(model_file, (char*)&all.sd->weighted_examples, sizeof(all.sd->weighted_examples),
-		"", read, msg, text);
+	msg << "weighted_labeled_examples " << all.sd->weighted_labeled_examples << "\n";
+	bin_text_read_write_fixed(model_file, (char*)&all.sd->weighted_labeled_examples, sizeof(all.sd->weighted_labeled_examples),
+				  "", read, msg, text);
 
 	msg << "weighted_labels " << all.sd->weighted_labels << "\n";
 	bin_text_read_write_fixed(model_file, (char*)&all.sd->weighted_labels, sizeof(all.sd->weighted_labels),
@@ -796,27 +797,37 @@ void save_load_online_state(vw& all, io_buf& model_file, bool read, bool text, g
 		if (read && g != nullptr) g->total_weight = total_weight;
 
 		// fix "loss since last" for first printed out example details
-		msg << "sd::oec.weighted_examples " << all.sd->old_weighted_examples << "\n";
-		bin_text_read_write_fixed(model_file, (char*)&all.sd->old_weighted_examples, sizeof(all.sd->old_weighted_examples),
+		msg << "sd::oec.weighted_labeled_examples " << all.sd->old_weighted_labeled_examples << "\n";
+		bin_text_read_write_fixed(model_file, (char*)&all.sd->old_weighted_labeled_examples, sizeof(all.sd->old_weighted_labeled_examples),
 			"", read, msg, text); 
 
 		// fix "number of examples per pass"
 		msg << "current_pass " << all.current_pass << "\n";
-		bin_text_read_write_fixed(model_file, (char*)&all.current_pass, sizeof(all.current_pass),
-			"", read, msg, text);
+		if (all.model_file_ver >= VERSION_PASS_UINT64)
+		  bin_text_read_write_fixed(model_file, (char*)&all.current_pass, sizeof(all.current_pass),
+					    "", read, msg, text);
+		else//backwards compatiblity.
+		  {
+		    size_t temp_pass = (size_t) all.current_pass;
+		    bin_text_read_write_fixed(model_file, (char*)&temp_pass, sizeof(temp_pass),
+					      "", read, msg, text);
+		    all.current_pass = temp_pass;
+		  }
+		  
 	}
 
-	if (!all.training || !all.preserve_performance_counters) // reset various things so that we report test set performance properly
+	if (read && (!all.training || !all.preserve_performance_counters)) // reset various things so that we report test set performance properly
 	{
 		all.sd->sum_loss = 0;
 		all.sd->sum_loss_since_last_dump = 0;
 		all.sd->dump_interval = 1.;
-		all.sd->weighted_examples = 0.;
+		all.sd->weighted_labeled_examples = 0.;
 		all.sd->weighted_labels = 0.;
 		all.sd->weighted_unlabeled_examples = 0.;
-		all.sd->old_weighted_examples = 0.;
+		all.sd->old_weighted_labeled_examples = 0.;
 		all.sd->example_number = 0;
 		all.sd->total_features = 0;
+		all.current_pass = 1;
 	}
 	if (all.weights.sparse)
 		save_load_online_state(all, model_file, read, text, g, msg, all.weights.sparse_weights);
@@ -984,7 +995,6 @@ base_learner* setup(vw& all)
     if(!all.adaptive && !all.normalized_updates)
     { if (!vm.count("initial_t"))
       { all.sd->t = 1.f;
-        all.sd->weighted_unlabeled_examples = 1.f;
         all.initial_t = 1.f;
       }
       all.eta *= powf((float)(all.sd->t), all.power_t);
